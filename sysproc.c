@@ -89,3 +89,13 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+// returns the number of times a system call was made
+// since start
+int 
+sys_getsyscallinfo(void) //<-- New
+{
+  int counter = 0;
+  counter = counter + 1;
+  return counter;
+}
