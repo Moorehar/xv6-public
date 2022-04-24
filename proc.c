@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "pstat.h" //<------ ADDED
 
 struct {
   struct spinlock lock;
@@ -311,6 +312,76 @@ wait(void)
   }
 }
 
+// <-- ADDED --> //
+/*
+	Sets the number of tickets of the calling process.
+		By default, each process should get one ticket; calling this routine makes it such that a process can raise the number of tickets it recieves, and thus recieve
+		a higher proprotion of CPU cycles. This routine should return 0 if successful, and -1 otherwise.
+*/
+int Total_Ticket_Global = 100;
+
+int settickets(int num)
+{
+  struct ptable *x;
+
+  for(int i = 0; i < NPROC; i++)
+  {
+    //Check if the current slot of the process table is in use
+    if (x.inuse[i] == 1)
+    {
+      //If the user asks for more tickets than are in the global availible, the system counts this as an error as there are no more to give for the time.
+      if(num > Total_Ticket_Global)
+      {
+        return -1;
+      }
+      //Increase the number of tickets gained by num
+      x.ttickets[i] = num;
+      return 0;
+    }
+    //If there are no values currently running on the list
+    if ((x.inuse[i] == 0) && (i == (NPROC - 1)))
+    {
+      //return a failure
+      return -1;
+    }
+  }
+}
+
+/*
+	Returns some basic information about each running process.
+		This includes how many times it has been chosen to run and its process Id, and which queue it is on (high or low). 
+		You can use this system call to build a variant of the command line program ps which can then be called to see what is going on.
+*/
+int getpinfo(struct pstat*)
+{
+  struct pstat *x;
+  printf(1, "RUNS		PID		QUEUE(1 for High, 0 for Low\n"); 
+
+  int queue;
+
+  //Goes through every current process
+	for(int i = 0; i < NPROC, i++)
+	{
+    //If hticks is higher than lticks, it is on lower priority.
+    if (x.hticks[i] > x.lticks[i])
+    {
+      queue = 0;
+    }
+    //If lticks is higher than hticks, it is on higher priority.
+    if (x.hticks[i] < x.lticks[i])
+    {
+      queue = 1;
+    }
+    //If hticks is the same as lticks, it defaults to round-robin.
+    if (x.hticks[i] == x.lticks[i])
+    {
+      queue = 0;
+    }
+    
+		printf("%d 		%d 		%d\n", ttotal[i], pid[i], queue)
+	}
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -322,9 +393,20 @@ wait(void)
 void
 scheduler(void)
 {
+  //<--- ADDED --->//
+  struct pstat *x;
+  int counter = 0;
+  ///////////////////
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
+
+  //<--- ADDED ---->//
+  //Sets all number of processes to 1 ticket whenever scheduler is set
+  for(int i = 0; i < NPROC; i++)
+  {
+    x.ttickets[i] = 1;
+  }
   
   for(;;){
     // Enable interrupts on this processor.
@@ -335,6 +417,21 @@ scheduler(void)
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
       if(p->state != RUNNABLE)
         continue;
+
+      // winner: use get_random_bytes number generator to get value between 0 and the total number of tickets
+      int winner = get_random_bytes(&Total_Ticket_Global, sizeof(int));
+      // Masks the most significant bit after the call, ensuring only positive random numbers.
+      winner &= 0x7FFFFFFF;
+      // current: use this to walk through the list of jobs
+      node_t *current = head;
+      while (current)
+      {
+        counter = counter + current->tickets;
+        if (counter > winner)
+          break; // found the winner
+        current = current->next;
+      }
+      // 'current' is the winner: schedule it...
 
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
